@@ -1,9 +1,14 @@
 #include <iostream>
+#include <fstream>
+#include <iterator>
+#include <vector>
 
-using namespace std;
 /*
  * Link to Chip 8 refrence : http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
 Chip 8 Memory Map (total memory 4kb):
+
+|-----8-Bits----|
+
 +---------------+= 0xFFF (4095) End of Chip-8 RAM
 |               |
 |               |
@@ -28,7 +33,7 @@ Chip 8 Memory Map (total memory 4kb):
 +---------------+= 0x000 (0) Start of Chip-8 RAM
 
     - 0x000-0x1FF - Chip 8 interpreter (contains font set in emu) [First 512 bytes are reserved]
-    - 0x050-0x0A0 - Used for the built in 4x5 pixel font set (0-F) [Part of reserved bytes for font set]
+    - 0x050-0x0A0 - Used for the built in 4x5 pixel font set (0-F) [Part of reserved (80) bytes for font set]
     - 0x200-0xFFF - Program ROM and work RAM [Part of Ram that can be used by programs]
 
  Registers:
@@ -70,7 +75,45 @@ uint8_t sound_timer; // timer register
 
 uint8_t key[16]; //  array to store the current state of the key
 
+uint8_t chip8_fontset[80]; // chip 8 font set
+
+void intitialize_chip8(std::vector<uint8_t> &program){
+    PC =  0x200; // PC starts at 0x200
+    opcode = 0; // Reset opcode
+    I = 0; // Reset index register
+    SP = 0; // Reset stack pointer
+
+    memset(gfx, 0, sizeof(gfx));       // clear display
+    memset(stack, 0 , sizeof(stack));  // clear stack
+    memset(V, 0, sizeof(V));           // clear registers
+    memset(memory, 0, sizeof(memory)); // clear memory
+
+    // load font set
+     //memcpy(memory+0x05, chip8_fontset, sizeof(chip8_fontset); // copy 80 bytes
+
+    // reset timers
+    delay_timer = 0;
+    sound_timer = 0;
+
+    // Loading the program into the memory
+    memcpy(memory + 0x200, &program[0], program.size());
+}
 
 int main() {
+    //cout<<sizeof(chip8_fontset);
+    std::string test_prg = "../test.ch8";
+    std::ifstream file(test_prg, std::ios::binary);
+    auto itr = std::istream_iterator<unsigned char >(file);
+    std::vector<unsigned char> buffer(itr,{}); // 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0
+                                               // d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0
+
+   intitialize_chip8(buffer);
+   // check if programing was copied correctly to memory
+//   for(int i=0;i<buffer.size();i++) assert(buffer[i]==memory[0x200+i] && "Program copy failed");
+
     return 0;
 }
+
+
+//     uint8_t : 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0 d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0
+//unsigned char: 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0 d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0

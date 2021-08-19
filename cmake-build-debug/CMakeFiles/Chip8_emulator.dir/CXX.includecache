@@ -9,6 +9,10 @@
 /Users/bhargavlad/CLionProjects/Chip8-emulator/main.cpp
 iostream
 -
+fstream
+-
+iterator
+-
 vector
 -
 
