@@ -75,7 +75,25 @@ uint8_t sound_timer; // timer register
 
 uint8_t key[16]; //  array to store the current state of the key
 
-uint8_t chip8_fontset[80]; // chip 8 font set
+// chip 8 font set
+uint8_t chip8_fontset[80]={
+        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+        0x20, 0x60, 0x20, 0x20, 0x70, // 1
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+};
 
 void intitialize_chip8(uint8_t program[], int n){
     PC =  0x200; // PC starts at 0x200
@@ -100,6 +118,112 @@ void intitialize_chip8(uint8_t program[], int n){
 }
 
 
+void emulateCyle_chip8(){
+    // Fetch opcode
+    // Big Endian hence, MSB is at lower address
+    uint8_t MSB = memory[PC];
+    uint8_t LSB = memory[PC+1];
+    opcode = (MSB<<8) | LSB;
+
+
+    // Decode and Execute
+    switch (opcode & 0xF000) {
+        case 0x0000:{
+            switch (opcode){
+                case 0x00E0:{ // clear screen
+                    memset(gfx, 0, sizeof(gfx));       // clear display
+                    PC += 2;
+                    break;
+                }
+                case 0x00EE:{ //return from subroutine
+                    // restore address from stack and decrement SP
+                    PC = stack[SP];
+                    SP -= 1;
+                    break;
+                }
+                default:{ assert(false && "Wrong Opcode"); }
+            }
+            break;
+        }
+        case 0x1000:{ // 1NNN: goto NNN
+            uint16_t nnn = opcode & 0x0FFF;
+            PC = nnn;
+            break;
+        }
+        case 0x2000:{ // 2NNN: Calls subroutine at NNN.
+            uint16_t nnn = opcode & 0x0FFF;
+            SP += 1;
+            stack[SP] = PC;
+            PC = nnn;
+            break;
+        }
+        case 0x6000:{ // 6XNN: Sets VX to NN.
+            uint16_t x = (opcode & 0x0F00)>>8;
+            uint16_t nn = opcode & 0x00FF;
+            V[x] = nn;
+            PC += 2;
+            break;
+        }
+        case 0xA000:{ // ANNN: set I to NNN
+            I = opcode & 0x0FFF;
+            PC += 2;
+            break;
+        }
+        case 0xC000:{ // CXNN: Rand Vx = rand() & nn
+            uint16_t x = (opcode & 0x0F00)>>8;
+            uint8_t nn = opcode & 0x00FF;
+            uint8_t r = (rand()%256);
+            V[x] = r & nn;
+            PC += 2;
+            break;
+        }
+        case 0xD000:{ // AXYN:draw(Vx, Vy, N)
+            uint16_t x = (opcode & 0x0F00)>>8;
+            uint16_t y = (opcode & 0x00F0)>>4;
+            uint16_t n = opcode & 0x000F;
+            // draw(V[x],V[y],n)
+            PC += 2;
+            break;
+        }
+        case 0xF00:{
+            switch (opcode & 0xF0FF){
+                case 0xF00A:{  // wait for input
+                    uint16_t x = (opcode & 0x0F00)>>8;
+                    char c  = (char)getchar();
+                    V[x] = c;
+                    PC += 2;
+                    break;
+                }
+                case 0xF033:{  // set_BCD(Vx) *(I+0) = BCD(3); *(I+1) = BCD(2); *(I+2) = BCD(1);
+                    uint16_t x = (opcode & 0x0F00)>>8;
+                    uint16_t n = V[x];
+                    memory[I + 2] = (n%10);
+                    n /= 10;
+                    memory[I + 1] = (n%10);
+                    n /= 10;
+                    memory[I] = (n%10);
+                    n /= 10;
+                    PC += 2;
+                    break;
+                }
+                case 0xF065:{  //reg_load(Vx, &I) Fills V0 to VX (including VX) with values from memory starting at address I.
+                    uint16_t x = (opcode & 0x0F00)>>8;
+                    for(int i=0;i<=x;i++)
+                        V[i] = memory[I+i];
+                    PC += 2;
+                    break;
+                }
+                case 0xF029:{  //I = sprite_addr[Vx]
+                    uint16_t x = (opcode & 0x0F00)>>8;
+                    I = V[x];
+                    PC += 2;
+                    break;
+                }
+            }
+        }
+
+    }
+}
 
 #define MAX 3584
 int main() {
@@ -117,17 +241,20 @@ int main() {
     file.close();
 
    intitialize_chip8(program, n); // initailize registers and load program to memory
-//   emulateCyle_chip8();
+   for(int i=0;i<n/2;++i)
+   {
+       emulateCyle_chip8();
+   }
 
 
 
 
     // check if programing was copied correctly to memory
-   for(int i=0;i<n;i++)
-   {
-       assert(program[i]==memory[0x200+i] && "Program copy failed");
-       printf("%x ",program[i]);
-   }
+//   for(int i=0;i<n;i++)
+//   {
+//       assert(program[i]==memory[0x200+i] && "Program copy failed");
+//       printf("%x ",program[i]);
+//   }
 
     return 0;
 }
@@ -135,21 +262,21 @@ int main() {
 
 
 
-// 00e0 - clear screen
-// c0ff - Rand Vx = rand() & 0xFF
-// a224 -  I = 0x0224
-// f033
-// f265
-// f029
-// 6000
-// 6300
-// d035
-// f129
-// 6005
-// d035
-// f229
-// 600a
-// d035
-// f00a
-// 1200
+//1  00e0 - clear screen
+//2  c0ff - Rand Vx = rand() & 0xFF
+//3  a224 - I = 0x0224
+//4  f033 - set_BCD(Vx) *(I+0) = BCD(3); *(I+1) = BCD(2); *(I+2) = BCD(1);
+//5  f265 - reg_load(Vx, &I) Fills V0 to VX (including VX) with values from memory starting at address I.
+//6  f029 - I = sprite_addr[Vx]
+//7  6000 - Sets VX to NN.
+//8  6300 - Sets VX to NN.
+//9  d035 -
+//10  f129
+//11  6005
+//12  d035
+//13  f229
+//14  600a
+//15  d035
+//16  f00a
+//17  1200
 
