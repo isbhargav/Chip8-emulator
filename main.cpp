@@ -64,7 +64,7 @@ uint8_t memory[0x1000]; // 4KB memory
 uint8_t V[16]; // 16 8 bit genral purpose register
 
 uint16_t PC ; // 16 bit PC register
-uint8_t SP ; // 16 bit SP register
+uint8_t SP ; // 16 bit SP register [SP always points to last address to pop]
 uint16_t I ; // 16 bit index register I
 uint16_t stack[16]; // 16 level stack
 
@@ -77,7 +77,7 @@ uint8_t key[16]; //  array to store the current state of the key
 
 uint8_t chip8_fontset[80]; // chip 8 font set
 
-void intitialize_chip8(std::vector<uint8_t> &program){
+void intitialize_chip8(uint8_t program[], int n){
     PC =  0x200; // PC starts at 0x200
     opcode = 0; // Reset opcode
     I = 0; // Reset index register
@@ -89,31 +89,67 @@ void intitialize_chip8(std::vector<uint8_t> &program){
     memset(memory, 0, sizeof(memory)); // clear memory
 
     // load font set
-     //memcpy(memory+0x05, chip8_fontset, sizeof(chip8_fontset); // copy 80 bytes
+     memcpy(memory+0x05, chip8_fontset, sizeof(chip8_fontset)); // copy 80 bytes
 
     // reset timers
     delay_timer = 0;
     sound_timer = 0;
 
     // Loading the program into the memory
-    memcpy(memory + 0x200, &program[0], program.size());
+    memcpy(memory + 0x200, program, n);
 }
 
-int main() {
-    //cout<<sizeof(chip8_fontset);
-    std::string test_prg = "../test.ch8";
-    std::ifstream file(test_prg, std::ios::binary);
-    auto itr = std::istream_iterator<unsigned char >(file);
-    std::vector<unsigned char> buffer(itr,{}); // 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0
-                                               // d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0
 
-   intitialize_chip8(buffer);
-   // check if programing was copied correctly to memory
-//   for(int i=0;i<buffer.size();i++) assert(buffer[i]==memory[0x200+i] && "Program copy failed");
+
+#define MAX 3584
+int main() {
+    std::string test_prg = "../test.ch8"; // program to load
+    std::ifstream file(test_prg, std::ios::binary); // read program
+    uint8_t program[MAX];
+
+    file.read((char *)program,MAX);
+    if(!file.eof())
+    {
+        std::cerr<<"Fail to read complete file";
+        exit(1);
+    }
+    int n = file.gcount();// get total bytes read
+    file.close();
+
+   intitialize_chip8(program, n); // initailize registers and load program to memory
+//   emulateCyle_chip8();
+
+
+
+
+    // check if programing was copied correctly to memory
+   for(int i=0;i<n;i++)
+   {
+       assert(program[i]==memory[0x200+i] && "Program copy failed");
+       printf("%x ",program[i]);
+   }
 
     return 0;
 }
 
 
-//     uint8_t : 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0 d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0
-//unsigned char: 0 e0 c0 ff a2 24 f0 33 f2 65 f0 29 60 0 63 0 d0 35 f1 29 60 5 d0 35 f2 29 60 d0 35 f0 12 0
+
+
+// 00e0 - clear screen
+// c0ff - Rand Vx = rand() & 0xFF
+// a224 -  I = 0x0224
+// f033
+// f265
+// f029
+// 6000
+// 6300
+// d035
+// f129
+// 6005
+// d035
+// f229
+// 600a
+// d035
+// f00a
+// 1200
+
